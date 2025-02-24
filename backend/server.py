@@ -5,6 +5,8 @@ from pydantic import BaseModel
 import logging
 from datetime import datetime, timedelta
 
+from MTClient import calculate_daily_change, get_position, get_historical_order
+
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,19 +27,7 @@ class MT5Connection(BaseModel):
     login: int
     password: str
 
-def calculate_daily_change(symbol: str) -> float:
-    try:
-        # Récupère les données des 2 derniers jours
-        rates = mt5.copy_rates_from(symbol, mt5.TIMEFRAME_D1, datetime.now(), 2)
-        if rates is None or len(rates) < 2:
-            return 0.0
-            
-        previous_close = rates[1]['close']
-        current_close = rates[0]['close']
-        return ((current_close - previous_close) / previous_close) * 100
-    except Exception as e:
-        logger.error(f"Error calculating daily change for {symbol}: {str(e)}")
-        return 0.0
+
 
 @app.on_event("startup")
 async def initialize_mt5():
@@ -74,12 +64,16 @@ async def get_asset_prices():
     """Récupère tous les actifs du Market Watch MT5 avec leurs prix"""
     try:
         assets = []
+        asset_entry = {}
+
         symbols = mt5.symbols_get()
+        #logger.info(f"Symbols retrieved: {len(symbols)}")
         
         for symbol in symbols:
             try:
                 # Vérifie si le symbole est activé dans le Market Watch
                 symbol_info = mt5.symbol_info(symbol.name)
+                trade = get_position(symbol.name)
                 if not symbol_info.visible:
                     continue
 
@@ -94,16 +88,31 @@ async def get_asset_prices():
                     "daily_change": calculate_daily_change(symbol.name),
                     "spread": round(tick.ask - tick.bid, 5),
                     "digits": symbol.digits,
-                    "trade_allowed": symbol.trade_mode == mt5.SYMBOL_TRADE_MODE_FULL
+                    "trade_allowed": symbol.trade_mode == mt5.SYMBOL_TRADE_MODE_FULL,
+                    
                 })
+                #logger.info(f"Asset added: {symbol.name}")
                 
-            except Exception as e:
-                logger.error(f"Error processing symbol {symbol.name}: {str(e)}")
-                continue
+                if trade:
+                    asset_entry[symbol.name] = {
+                        "entry_price": trade['price'], 
+                        "gain_percentage": (tick.ask / trade['price'] - 1) * 100,
+                        "gain": trade['profit'],
+                        "count_trade": trade['count'],
+                        "volume": trade['volume']
+                    }
+                    #logger.info(f"Trade data added for: {symbol.name}")
 
-        return {"assets": assets}
+            except Exception as e:
+                #logger.error(f"Error processing symbol {symbol.name}: {str(e)}")
+                continue
+    
+        #logger.info(f"Assets retrieved: {len(assets)}")
+        #logger.info(f"Asset trades retrieved: {len(asset_entry)}")
+        return {"assets": assets, "asset_trade": asset_entry}
+    
     except Exception as e:
-        logger.error(f"Error getting assets: {str(e)}")
+        #logger.error(f"Error getting assets: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/historical-data/{symbol}")
@@ -122,6 +131,17 @@ async def get_historical_data(symbol: str, timeframe: str = "H1", count: int = 1
         return {"data": rates.tolist()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/trade-history")
+async def get_trade_history():
+    """Récupère l'historique des trades"""
+    try:
+        history = get_historical_order()
+        logger.info(f"Trade history retrieved: {len(history)}")
+        return {"trade_history": history}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/connect")
 async def connect_mt5(connection: MT5Connection):

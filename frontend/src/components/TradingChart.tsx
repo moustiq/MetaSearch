@@ -19,7 +19,7 @@ const TradingChart = ({ symbol, isExpanded, digits }: TradingChartProps) => {
   const [timeframe, setTimeframe] = useState('D1')
   const [chartType, setChartType] = useState<'candlestick' | 'line'>('candlestick')
   const [series, setSeries] = useState<{ name: string; data: ChartData[] }[]>([])
-  //const [xaxisRange, setXaxisRange] = useState<{ min: number; max: number } | undefined>(undefined)
+  const [theme, setTheme] = useState<'light' | 'dark'>('light')
 
   useEffect(() => {
     const fetchHistoricalData = async () => {
@@ -43,6 +43,11 @@ const TradingChart = ({ symbol, isExpanded, digits }: TradingChartProps) => {
 
     fetchHistoricalData()
   }, [symbol, timeframe])
+
+  useEffect(() => {
+    const currentTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+    setTheme(currentTheme)
+  }, [])
 
   // Configuration dynamique de l'axe X en fonction du timeframe
   const getXAxisConfig = () => {
@@ -82,7 +87,9 @@ const TradingChart = ({ symbol, isExpanded, digits }: TradingChartProps) => {
       zoom: { // Configuration du zoom dynamique
         autoScaleYaxis: false,
         enabled: isExpanded
-      }
+      },
+      background: theme === 'dark' ? '#1e293b' : '#ffffff',
+      foreColor: theme === 'dark' ? '#cbd5e1' : '#1e293b'
     },
     xaxis: getXAxisConfig(),
     yaxis: {
@@ -109,6 +116,7 @@ const TradingChart = ({ symbol, isExpanded, digits }: TradingChartProps) => {
       enabled: false
     },
     tooltip: {
+      theme: theme,
       x: {
         formatter: (value: number) => {
           const date = new Date(value)
@@ -125,9 +133,13 @@ const TradingChart = ({ symbol, isExpanded, digits }: TradingChartProps) => {
   }
 
   return (
-    <div className="trading-chart-wrapper">
-      <div className="chart-controls">
-        <select onChange={(e) => setTimeframe(e.target.value)} value={timeframe}>
+    <div className="trading-chart-wrapper p-4 bg-white dark:bg-slate-800 rounded-lg shadow-lg">
+      <div className="chart-controls flex justify-between items-center mb-4">
+        <select 
+          onChange={(e) => setTimeframe(e.target.value)} 
+          value={timeframe}
+          className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-700 dark:text-slate-300"
+        >
           <option value="M1">1 Minute</option>
           <option value="H1">1 Heure</option>
           <option value="D1">1 Jour</option>
@@ -136,7 +148,7 @@ const TradingChart = ({ symbol, isExpanded, digits }: TradingChartProps) => {
         
         <button 
           onClick={() => setChartType(prev => prev === 'candlestick' ? 'line' : 'candlestick')}
-          className="chart-type-toggle"
+          className="ml-4 px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg shadow-sm hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors duration-200"
         >
           {chartType === 'candlestick' ? 'Vue Ligne' : 'Vue Chandeliers'}
         </button>
